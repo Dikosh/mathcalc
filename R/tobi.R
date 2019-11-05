@@ -14,6 +14,8 @@
 
 
 tobi <- function(x){
+  
+  
   df <- df[is.na(df$avtosalon),]
   df <- df[is.na(df$new_avaria_nahodu),]
   df <- df[df$rastamozhen!="Нет",]
@@ -31,10 +33,9 @@ tobi <- function(x){
   df <- df[!is.na(df$Model),]
   
   df$PID <- 1:nrow(df)
-  df <- cSplit(as.data.table(df)[, phone := gsub("[][\"]", "", phone)], 
+  df <- cSplit(as.data.table(df)[, phone := gsub("[][\"]", "", phone)],
                "phone", ",", "long")
   df$phone <-   str_replace_all(df$phone, "[[:punct:]]", " ")
-  
   df <- df[!is.na(df$phone),]
   aia <- df %>% group_by(phone) %>% summarise(nn = n())
   aia$nchar <- nchar(as.character(aia$phone))
