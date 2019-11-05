@@ -9,5 +9,5 @@ Description: More about what it does (maybe more than one line)
 License: What license is it under?
 Encoding: UTF-8
 LazyData: true
-Imports:data.table,dplyr,data.table,randomForest,rpart,readr,readxl,xgboost,Matrix,caret,splitstackshape,stringr,lubridate
+Imports: data.table,dplyr,data.table,randomForest,rpart,readr,readxl,xgboost,Matrix,caret,splitstackshape,stringr,lubridate
 
