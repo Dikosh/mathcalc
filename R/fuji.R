@@ -15,8 +15,6 @@
 
 fuji <- function(df){
   
-  library(devtools)
-  document()
   df <- df[is.na(df$avtosalon),]
   df <- df[is.na(df$new_avaria_nahodu),]
   df <- df[df$rastamozhen!="Нет",]
