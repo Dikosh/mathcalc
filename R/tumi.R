@@ -8,33 +8,13 @@
 #'
 #' @examples  stock_predict('AAPL')
 #'
-#' @export tobi
+#' @export tumi
 
 #' @import data.table
 
-tobi <- function(x){
+
+tumi <- function(x){
   
-  
-  df <- df[is.na(df$avtosalon),]
-  df <- df[is.na(df$new_avaria_nahodu),]
-  df <- df[df$rastamozhen!="Нет",]
-  df <- df[is.na(df$V_nalichii),]
-  df <- select(df,-c(V_nalichii,vin,avtosalon,new_avaria_nahodu,ne_ispolzuetsa))
-  df$probeg <-  substr(df$probeg,1,nchar(df$probeg)-3)
-  df$probeg <- as.integer(gsub(" ","",df$probeg))
-  min <- 1900
-  max <- 390000
-  df$to_delete <- ifelse(is.na(df$probeg),55555,df$probeg)
-  df <- df[df$to_delete>=min,]
-  df <- df[df$to_delete<=max,]
-  df$to_delete <- NULL
-  df <- df[!is.na(df$Marka),]
-  df <- df[!is.na(df$Model),]
-  
-  df$PID <- 1:nrow(df)
-  df <- cSplit(as.data.table(df)[, phone := gsub("[][\"]", "", phone)],
-               "phone", ",", "long")
-  df$phone <-   str_replace_all(df$phone, "[[:punct:]]", " ")
   df <- df[!is.na(df$phone),]
   aia <- df %>% group_by(phone) %>% summarise(nn = n())
   aia$nchar <- nchar(as.character(aia$phone))
@@ -93,17 +73,6 @@ tobi <- function(x){
   days <- as.integer(max(daud$data_dobavlenia_v_parser)-min(daud$data_dobavlenia_v_parser))
   daud <- daud[daud$date_difference<=days+40,]
   
-  yes <- daud#[daud$sale=='yes',]
-  q <- yes %>% group_by(date_difference,sale) %>% summarise(n=n())
-  logic3 <- ggplotly(qplot(q$date_difference,q$n,color=q$sale,geom = 'line',xlab = "Без  7 дней + архив"))
-  logic3
-  summary(q$date_difference)
-  
-  library(tidyr)
-  q1 <- yes %>% group_by(date_difference,sale) %>% summarise(n=n()) %>% spread(sale,n)
-  q1$sum <- q1$yes+q1$no
-  cor.test(q1$sum,q1$yes)
-  qplot(q1$sum,q1$yes)
   daud$data_date <- NULL
   daud$Max_date <- NULL
   daud$schet <- NULL
@@ -169,7 +138,9 @@ tobi <- function(x){
                                    ifelse(sales$Prodan_days<20,"less than 20 days",
                                           ifelse(sales$Prodan_days<30,"less than 30 days","more than 30 days")))
   sales_to_train <- select(sales,-c(Count,days,q3,q1,cena,Prodan))
-  write.csv(sales_to_train,"SALES_TO_TRAIN.csv",row.names = F)
+  write.csv(sales_to_train,"BIG/SALES_TO_TRAIN.csv",row.names = F)
+  write.csv(df,"BIG/df.csv",row.names = F)
+  df <- fread("BIG/df.csv")
   train <- select(df,c(Marka,Model,Year,Tip_kuzova,KPP,privod,raspolozhenie_rulya,cvet,cena,volume,dvigatel,City,
                        Mean,Third_quartile,First_quantile,difficulty_classificator,anomaly_by_price,anomaly_by_year,
                        year_mean,First_q_year,Second_q_year,Marka_model_n,Marka_n,id_car_in_kolesa))
@@ -189,16 +160,16 @@ tobi <- function(x){
   train <- train[train$cena<30000000,]
   train <- train[train$cena>900000,]
   train <- unique(train)
-  train <- train[train$Year>=1990,]
   train <- train %>% mutate_if(is.character,as.factor)
   write.csv(select(train,id_car_in_kolesa),"mini_id_checker.csv",row.names = F)
+  sales_to_train <- read.csv("BIG/SALES_TO_TRAIN.csv")
   train <- inner_join(train,sales_to_train)
   train <- na.omit(train)
   checkers <- select(df,c(id_car_in_kolesa,date_difference,views,kod_statusa))
   train$City <- NULL
   
-  fwrite(checkers,"checkers.csv",row.names = F)
-  write.csv(train,"TRAIN.CSV",row.names = F)
+  fwrite(checkers,"BIG/checkers.csv",row.names = F)
+  write.csv(train,"BIG/TRAIN.CSV",row.names = F)
   
   
   additional_data <- df %>% 
@@ -210,11 +181,9 @@ tobi <- function(x){
     group_by(Marka,Model,Year,KPP,Tip_kuzova,raspolozhenie_rulya,volume,dvigatel) %>% 
     summarise(Sales = n()) 
   str(df)
-  df <- df %>% mutate_if(is.character,as.factor)
-  write.csv(df,"df.csv",row.names = F)
   
   
-  train <- fread("TRAIN.CSV",stringsAsFactors = T)
+  train <- fread("BIG/TRAIN.CSV",stringsAsFactors = T)
   
   IDs <- select(train,id_car_in_kolesa)
   train$id_car_in_kolesa <- NULL
@@ -229,23 +198,6 @@ tobi <- function(x){
   
   dtrain <- xgb.DMatrix(data=dtrain,label=tr$cena)
   ctest <- xgb.DMatrix(data=ctest,label=ts$cena)
-  
-  bst <- xgb.cv(data = dtrain,
-                objective='reg:linear',
-                nrounds = 300,
-                nfold = 5,
-                metrics = "rmse",
-                maximize = FALSE,
-                verbose = 3,
-                early_stopping_rounds = 30,
-                max_depth=7,
-                #  colsample_bytree = 0.7
-                
-                #maximize = FALSE
-                #              max_depth=4
-  )
-  # with new data 381675.906250+8968.554660
-  # withoyt test-rmse:382291.606250+15700.118058
   bst <- xgboost(data = dtrain,
                  objective='reg:linear',
                  nrounds = 25,
@@ -255,17 +207,8 @@ tobi <- function(x){
                  verbose = 0,
                  #early_stopping_rounds = 30,
                  max_depth=7)
-  
-  xgbImp1 <- xgb.importance(model = bst)
-  xgbImp1 <- xgbImp1 %>% mutate(rank = dense_rank(desc(Gain)))
-  
   pred <- predict(bst,ctest)
-  ggplot(data=xgbImp1[which(xgbImp1$rank <= 20),], aes(x = reorder(Feature, -Gain), y = Gain)) +
-    geom_bar(stat="identity") + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    labs(title = "XG Boosted Feature Importance (Top 20)", x = "Features", y = "Information Gain")
   mean(ts$cena-pred)
-  qplot(ts$cena-pred)
   
   
   ts$prognoz <- pred
@@ -274,28 +217,18 @@ tobi <- function(x){
   
   ts$error <- (ts$cena-ts$prognoz)/(ts$cena+ts$prognoz)
   ts$diff <- ts$cena - ts$prognoz
-  qplot(ts$error)
   summary(ts$error)
   ts$prognoz <- abs(ts$prognoz)
-  qplot(ts$prognoz,ts$cena,color = ts$anomaly_by_price)
-  
-  
   xgb.save(bst, 'xgb.model')
   bst <- xgb.load('xgb.model')
   
   Ids_test <- IDs[-index,]
   ts$id_car_in_kolesa <- Ids_test
-  
-  
   checkers <- fread("checkers.csv")
-  #checkers <- select(df,c(id_car_in_kolesa,date_difference,views,kod_statusa))
   tsss <- inner_join(ts,checkers)
-  
   tsss$flag1 <-  ifelse(tsss$prognoz<tsss$cena,"predicted less than fact","predicted is greater")
-  
   mean_views <- tsss %>% group_by(Marka,Model,Year) %>% summarise(mean_date_difference = mean(date_difference),
                                                                   count = n())
-  
   mean_views
   
   tsss <- inner_join(tsss,mean_views)
@@ -323,28 +256,20 @@ tobi <- function(x){
   
   
   
-  
   prop.table(table(tsss$flag1,tsss$flag2))
   Final <- tsss
   Final$CLASSS <- ifelse(Final$flag1=="predicted is greater" & tsss$flag2=="active","Predicted greater and active","NAN")
-  
-  
   index <- createDataPartition(train$cena,p=0.7,list = F)
   tr <- train[index,-c(24:27)]
   ts <- train[-index,-c(24:27)]
   colnames(tr)
   str(tr)
-  
   dtrain <- data.matrix(select(tr,-c(Sales_days_group)))
   ctest <- data.matrix(select(ts,-c(Sales_days_group)))
   train_labs <- as.numeric(tr$Sales_days_group) - 1
   val_labs <- as.numeric(ts$Sales_days_group) - 1
-  
-  
   dtrain <- xgb.DMatrix(data=dtrain,label=train_labs)
   ctest <- xgb.DMatrix(data=ctest,label=val_labs)
-  
-  
   # Set parameters(default)
   params <- list(booster = "gbtree", objective = "multi:softprob", num_class = 4, eval_metric = "mlogloss")
   
@@ -441,248 +366,8 @@ tobi <- function(x){
   Final$Sales_days_group_int <- xgb_val_out$label
   
   
-  
-  
-  
-  
-  names <- c("id",
-             "similar car",
-             "id_car_in_kolesa",
-             "City",
-             "Marka",
-             "Model",
-             "Year",
-             "V_nalichii",
-             "Tip_kuzova",
-             "volume_dvigatel",
-             "probeg",
-             "KPP",
-             "privod",
-             "raspolozhenie_rulya",
-             "cvet",
-             "rastamozhen",
-             "cena",
-             "phone",
-             "vin",
-             "avtosalon",
-             "kod_statusa",
-             "byli_li_izmenenie_ceny",
-             "izmenenie_probega",
-             "opcii",
-             "data_obyavlenia",
-             "views",
-             "komments",
-             "data_dobavlenia_v_parser",
-             "-",
-             "data_posl_obyavlenia",
-             "text",
-             "new_avaria_nahodu",
-             "ne_ispolzuetsa"
-             
-  )
-  files <- list.files(path = "DATA/", pattern = "*.xlsx", full.names = T)
-  
-  tbl <- sapply(files, read_excel, simplify=FALSE) %>% 
-    bind_rows(.id = "id")
-  df <- tbl[,-c(1,2)]
-  rm(tbl)
-  colnames(df) <- names
-  df <- df[is.na(df$avtosalon),]
-  df <- df[is.na(df$new_avaria_nahodu),]
-  df <- df[df$rastamozhen!="Нет",]
-  df <- df[is.na(df$V_nalichii),]
-  df <- select(df,-c(V_nalichii,vin,avtosalon,new_avaria_nahodu,ne_ispolzuetsa))
-  df$probeg <-  substr(df$probeg,1,nchar(df$probeg)-3)
-  df$probeg <- as.integer(gsub(" ","",df$probeg))
-  min <- quantile(df$probeg,na.rm = T,c(0.08))
-  max <- quantile(df$probeg,na.rm = T,c(0.92))
-  df$to_delete <- ifelse(is.na(df$probeg),55555,df$probeg)
-  df <- df[df$to_delete>=min,]
-  df <- df[df$to_delete<=max,]
-  df$to_delete <- NULL
-  df <- df[!is.na(df$Marka),]
-  df <- df[!is.na(df$Model),]
-  
-  df$PID <- 1:nrow(df)
-  df <- cSplit(as.data.table(df)[, phone := gsub("[][\"]", "", phone)], 
-               "phone", ",", "long")
-  df$phone <-   str_replace_all(df$phone, "[[:punct:]]", " ")
-  
-  df <- df[!is.na(df$phone),]
-  aia <- df %>% group_by(phone) %>% summarise(nn = n())
-  aia$nchar <- nchar(as.character(aia$phone))
-  aia_tiny <- aia[aia$nchar==16 | aia$nchar==17,]
-  aia_tiny$phone <-   str_replace_all(aia_tiny$phone, "[[:punct:]]", " ")
-  aia_tiny$code <-  substring(aia_tiny$phone, 3, 3)
-  aia_tiny <- aia_tiny[aia_tiny$code==7,]
-  aia_tiny <- aia_tiny[,1]
-  aia_tiny <- na.omit(aia_tiny)
-  aia_tiny$phone <- as.factor(aia_tiny$phone)
-  df <- df[!is.na(df$phone),]
-  df <- inner_join(df,aia_tiny)
-  phones <- df %>% group_by(phone) %>% summarise(nn=n()) 
-  phones$class <- ifelse(phones$nn>=10,'Перекуп','Не перекуп')
-  write.csv(phones,"dictionaries/phones.csv",row.names = F)
-  phones <- read.csv("dictionaries/phones.csv")
-  df <- inner_join(df,phones)
-  df <- df[df$class!="Перекуп",]
-  df$volume <-  as.numeric(sapply(strsplit(df$volume_dvigatel, " "), "[", 1))
-  df$dvigatel <- sapply(strsplit(df$volume_dvigatel, " "), "[", 2)
-  df$nn <- NULL
-  df$data_dobavlenia_v_parser <-  ymd_hms(df$data_dobavlenia_v_parser)
-  df$data_posl_obyavlenia <- ymd_hms(df$data_posl_obyavlenia)
-  df$data_dobavlenia_v_parser <- as.Date(df$data_dobavlenia_v_parser)
-  df$data_posl_obyavlenia <- as.Date(df$data_posl_obyavlenia)
-  df <- df[df$data_posl_obyavlenia!="2020-01-01",]
-  df$date_difference <- (as.integer(df$data_posl_obyavlenia -  df$data_dobavlenia_v_parser))
-  ai <- df %>% group_by(City,Marka,Model,Year,phone) %>% summarise(schet = n())
-  df <- inner_join(df,ai)
-  gc()
-  gc(reset = TRUE)
-  df$opcii <- NULL
-  df$text <- NULL
-  unique_cars = df[df$schet==1,]
-  not_unique_cars = df[df$schet!=1,]
-  not_unique_cars <- not_unique_cars %>% mutate_if(is.character,as.factor)
-  not_unique_cars <- not_unique_cars[!is.na(not_unique_cars$Model),]
-  numbs <- not_unique_cars %>% group_by(City,Marka,Model,Year,phone) %>% summarise(SUM_DIF = sum(date_difference))# ZVEZDOCHKA
-  maxs <- not_unique_cars %>% group_by(City,Marka,Model,Year,phone) %>% summarise(data_posl_obyavlenia = max(data_posl_obyavlenia),
-                                                                                  dama = min(data_dobavlenia_v_parser))
-  data <- inner_join(not_unique_cars,maxs)
-  data <- inner_join(data,numbs)
-  data$data_dobavlenia_v_parser <- data$dama
-  data$dama <- NULL
-  data$date_difference <- data$SUM_DIF
-  data$SUM_DIF <- NULL
-  daud <- rbind(unique_cars,data)
-  daud <- daud[daud$date_difference<=quantile(data$date_difference,0.99),]
-  daud$Max_date <- max(daud$data_posl_obyavlenia)
-  daud$data_date <- as.integer(daud$Max_date-daud$data_posl_obyavlenia)
-  #daud <- daud[daud$data_posl_obyavlenia<=daud$Max_date-30,]
-  daud <- daud[!(daud$date_difference==7 & daud$kod_statusa==2),]
-  daud$sale <- ifelse((daud$kod_statusa==4 & daud$data_date>30 ) | (daud$kod_statusa==2 & daud$data_date>30),'yes','no')
-  yes <- daud#[daud$sale=='yes',]
-  q <- yes %>% group_by(date_difference,sale) %>% summarise(n=n())
-  logic3 <- ggplotly(qplot(q$date_difference,q$n,color=q$sale,geom = 'line',xlab = "Без  7 дней + архив"))
-  logic3
-  library(tidyr)
-  q1 <- yes %>% group_by(date_difference,sale) %>% summarise(n=n()) %>% spread(sale,n)
-  q1$sum <- q1$yes+q1$no
-  cor.test(q1$sum,q1$yes)
-  qplot(q1$sum,q1$yes)
-  daud$data_date <- NULL
-  daud$Max_date <- NULL
-  daud$schet <- NULL
-  df <- daud
-  df <- df[df$Year>=1990,]
-  group_1 <- read.csv("dictionaries/group1.csv")
-  df <- inner_join(df,group_1)
-  group_2 <- read.csv("dictionaries/group2.csv")
-  
-  df <- inner_join(df,group_2)
-  df$phone <- NULL
-  df <- unique(df)
-  group_3 <- read.csv("dictionaries/group3.csv")
-  
-  df <- inner_join(df,group_3)
-  df$anomaly_by_price <- ifelse(df$cena>=df$Third_quartile,"too_expensive",
-                                ifelse(df$cena>=df$Third_quantile,"expensive",
-                                       ifelse(df$cena<=df$First_quantile,"too_cheap",
-                                              ifelse(df$cena<=df$Second_quantile,"cheap","normal"))))
-  prop.table(table(df$anomaly_by_price))
-  group_4 <- read.csv("dictionaries/group_4.csv")
-  
-  df <- inner_join(df,group_4)
-  df$anomaly_by_year <- ifelse(df$Year>=df$Fourth_q_year,"too_new",
-                               ifelse(df$Year>=df$Third_q_year,"new",
-                                      ifelse(df$Year<=df$Second_q_year,"old",
-                                             ifelse(df$Year<=df$First_q_year,"too_old","new"))))
-  
-  prop.table(table(df$anomaly_by_year))
-  hist(df$Year)
-  df$Sell_classs <- ifelse(df$sale=='yes',"Продан","Неизвестно")
-  df$sale <- NULL
-  sales_table <- df %>% group_by(Marka,Model,Year) %>% filter(Sell_classs =="Продан") %>% summarise(Prodan = n(),
-                                                                                                    Prodan_days = mean(date_difference),
-                                                                                                    Prodan_3 = quantile(date_difference,0.9),
-                                                                                                    Prodan_1 = quantile(date_difference,0.1),
-                                                                                                    Prodan_cena = mean(cena))
-  sales_table_3 <- df %>% group_by(Marka,Model,Year) %>%  summarise(Count = n(),
-                                                                    days = mean(date_difference),
-                                                                    q3 = quantile(date_difference,0.9),
-                                                                    q1 = quantile(date_difference,0.1),
-                                                                    cena = mean(cena))
-  sales <- left_join(sales_table_3,sales_table)
-  sales <- sales[sales$Count>10,]
-  sales$predictable <- ifelse(sales$Count<=10,"cant predict","can predict")
-  sales$Prodan_days <- as.integer(sales$Prodan_days)
-  sales$Sales_days_group <- ifelse(sales$Prodan_days<10,"less than 10 days",
-                                   ifelse(sales$Prodan_days<20,"less than 20 days",
-                                          ifelse(sales$Prodan_days<30,"less than 30 days","more than 30 days")))
-  sales_to_train <- select(sales,-c(Count,days,q3,q1,cena,Prodan))
-  train <- select(df,c(Marka,Model,Year,Tip_kuzova,KPP,privod,raspolozhenie_rulya,cvet,cena,volume,dvigatel,City,
-                       Mean,Third_quartile,First_quantile,difficulty_classificator,anomaly_by_price,anomaly_by_year,
-                       year_mean,First_q_year,Second_q_year,Marka_model_n,Marka_n,id_car_in_kolesa))
-  colnames(train)
-  train <- train %>% mutate_if(is.character,as.factor)
-  train$privod <- ifelse(is.na(train$privod),"NAN",train$privod)
-  sapply(train,function(x){sum(is.na(x))})
-  train$cvet <- ifelse(is.na(as.character(train$cvet)),"NAN_color",as.character(train$cvet))
-  train <- na.omit(train)
-  train <- train %>% mutate_if(is.character,as.factor)
-  options(scipen = 999)
-  testr <- read.csv("dictionaries/group5.csv")
-  
-  head(df)
-  
-  
-  train <- inner_join(train,testr)
-  train <- train[train$cena<30000000,]
-  train <- train[train$cena>900000,]
-  train <- unique(train)
-  train <- train[train$Year>=1990,]
-  train <- train %>% mutate_if(is.character,as.factor)
-  write.csv(select(train,id_car_in_kolesa),"mini_id_checker.csv",row.names = F)
-  train <- inner_join(train,sales_to_train)
-  train <- na.omit(train)
-  checkers <- select(df,c(id_car_in_kolesa,date_difference,views,kod_statusa))
-  train$City <- NULL
-  fwrite(checkers,"checkers.csv",row.names = F)
-  write.csv(train,"TRAIN.CSV",row.names = F)
-  
-  
-  additional_data <- df %>% 
-    group_by(Marka,Model,Year,KPP,Tip_kuzova,raspolozhenie_rulya,volume,dvigatel) %>% 
-    summarise(Count = n())
-  
-  
-  additional_data1 <- df %>% filter(Sell_classs=="Продан") %>% 
-    group_by(Marka,Model,Year,KPP,Tip_kuzova,raspolozhenie_rulya,volume,dvigatel) %>% 
-    summarise(Sales = n()) 
-  str(df)
-  df <- df %>% mutate_if(is.character,as.factor)
-  write.csv(df,"df.csv",row.names = F)
-  
-  
-  library(data.table)
-  library(dplyr)
-  library(data.table)
-  library(randomForest)
-  library(rpart)
-  library(plotly)
-  library(readr)
-  library(readxl)
-  library(xgboost)
-  library(Matrix)
-  library(caret)
-  library(splitstackshape)
-  library(stringr)
-  library(lubridate)
-  
-  df <- fread("TRAIN.CSV",stringsAsFactors = T)
-  qplot(df$Prodan_3)
-  table(df$City)
-  train <- df
+  dfd <- fread("BIG/TRAIN.CSV",stringsAsFactors = T)
+  train <- dfd
   IDs <- select(train,id_car_in_kolesa)
   train$id_car_in_kolesa <- NULL
   dtrain <- data.matrix(select(train,-c(cena)))
@@ -693,7 +378,7 @@ tobi <- function(x){
   train$diff <- train$cena - train$prognoz
   train$prognoz <- abs(train$prognoz)
   summary(train$error)
-  train <- df
+  train <- dfd
   IDs <- select(train,id_car_in_kolesa)
   train$id_car_in_kolesa <- NULL
   index <- createDataPartition(train$cena,p=0.7,list = F)
@@ -732,7 +417,7 @@ tobi <- function(x){
   train$diff <- train$cena - train$prognoz
   train$prognoz <- abs(train$prognoz)
   
-  checkers <- fread("checkers.csv")
+  checkers <- fread("BIG/checkers.csv")
   train$id_car_in_kolesa <- IDs$id_car_in_kolesa
   train <- inner_join(train,checkers)
   train$flag1 <-  ifelse(train$prognoz<train$cena,"predicted less than fact","predicted is greater")
@@ -759,349 +444,9 @@ tobi <- function(x){
                                                                       ifelse(train$prognoz<=15000000,train$prognoz - 900000,
                                                                              ifelse(train$prognoz>15000000,train$prognoz - 1200000,"NAN"))))))))
   
-  fwrite(train,"PREDICTED_VALUES.csv",row.names = F)
-  
-  library(data.table)
-  library(dplyr)
-  library(data.table)
-  library(randomForest)
-  library(rpart)
-  library(plotly)
-  library(readr)
-  library(readxl)
-  library(xgboost)
-  library(Matrix)
-  library(caret)
-  library(splitstackshape)
-  library(stringr)
-  library(lubridate)
-  library(secure)
-  
-  
-  
-  
-  names <- c("id",
-             "similar car",
-             "id_car_in_kolesa",
-             "City",
-             "Marka",
-             "Model",
-             "Year",
-             "V_nalichii",
-             "Tip_kuzova",
-             "volume_dvigatel",
-             "probeg",
-             "KPP",
-             "privod",
-             "raspolozhenie_rulya",
-             "cvet",
-             "rastamozhen",
-             "cena",
-             "phone",
-             "vin",
-             "avtosalon",
-             "kod_statusa",
-             "byli_li_izmenenie_ceny",
-             "izmenenie_probega",
-             "opcii",
-             "data_obyavlenia",
-             "views",
-             "komments",
-             "data_dobavlenia_v_parser",
-             "-",
-             "data_posl_obyavlenia",
-             "text",
-             "new_avaria_nahodu",
-             "ne_ispolzuetsa"
-             
-  )
-  files <- list.files(path = "DATA/", pattern = "*.xlsx", full.names = T)
-  
-  tbl <- sapply(files, read_excel, simplify=FALSE) %>% 
-    bind_rows(.id = "id")
-  df <- tbl[,-c(1,2)]
-  rm(tbl)
-  colnames(df) <- names
-  df <- df[is.na(df$avtosalon),]
-  df <- df[is.na(df$new_avaria_nahodu),]
-  df <- df[df$rastamozhen!="Нет",]
-  df <- df[is.na(df$V_nalichii),]
-  df <- select(df,-c(V_nalichii,vin,avtosalon,new_avaria_nahodu,ne_ispolzuetsa))
-  df$probeg <-  substr(df$probeg,1,nchar(df$probeg)-3)
-  df$probeg <- as.integer(gsub(" ","",df$probeg))
-  min <- quantile(df$probeg,na.rm = T,c(0.08))
-  max <- quantile(df$probeg,na.rm = T,c(0.92))
-  df$to_delete <- ifelse(is.na(df$probeg),55555,df$probeg)
-  df <- df[df$to_delete>=min,]
-  df <- df[df$to_delete<=max,]
-  df$to_delete <- NULL
-  df <- df[!is.na(df$Marka),]
-  df <- df[!is.na(df$Model),]
-  
-  df$PID <- 1:nrow(df)
-  df <- cSplit(as.data.table(df)[, phone := gsub("[][\"]", "", phone)], 
-               "phone", ",", "long")
-  df$phone <-   str_replace_all(df$phone, "[[:punct:]]", " ")
-  
-  df <- df[!is.na(df$phone),]
-  aia <- df %>% group_by(phone) %>% summarise(nn = n())
-  aia$nchar <- nchar(as.character(aia$phone))
-  aia_tiny <- aia[aia$nchar==16 | aia$nchar==17,]
-  aia_tiny$phone <-   str_replace_all(aia_tiny$phone, "[[:punct:]]", " ")
-  aia_tiny$code <-  substring(aia_tiny$phone, 3, 3)
-  aia_tiny <- aia_tiny[aia_tiny$code==7,]
-  aia_tiny <- aia_tiny[,1]
-  aia_tiny <- na.omit(aia_tiny)
-  aia_tiny$phone <- as.factor(aia_tiny$phone)
-  df <- df[!is.na(df$phone),]
-  df <- inner_join(df,aia_tiny)
-  phones <- df %>% group_by(phone) %>% summarise(nn=n()) 
-  phones$class <- ifelse(phones$nn>=10,'Перекуп','Не перекуп')
-  write.csv(phones,"dictionaries/phones.csv",row.names = F)
-  phones <- read.csv("dictionaries/phones.csv")
-  df <- inner_join(df,phones)
-  df <- df[df$class!="Перекуп",]
-  df$volume <-  as.numeric(sapply(strsplit(df$volume_dvigatel, " "), "[", 1))
-  df$dvigatel <- sapply(strsplit(df$volume_dvigatel, " "), "[", 2)
-  df$nn <- NULL
-  df$data_dobavlenia_v_parser <-  ymd_hms(df$data_dobavlenia_v_parser)
-  df$data_posl_obyavlenia <- ymd_hms(df$data_posl_obyavlenia)
-  df$data_dobavlenia_v_parser <- as.Date(df$data_dobavlenia_v_parser)
-  df$data_posl_obyavlenia <- as.Date(df$data_posl_obyavlenia)
-  df <- df[df$data_posl_obyavlenia!="2020-01-01",]
-  df$date_difference <- (as.integer(df$data_posl_obyavlenia -  df$data_dobavlenia_v_parser))
-  ai <- df %>% group_by(City,Marka,Model,Year,phone) %>% summarise(schet = n())
-  df <- inner_join(df,ai)
-  gc()
-  gc(reset = TRUE)
-  df$opcii <- NULL
-  df$text <- NULL
-  unique_cars = df[df$schet==1,]
-  not_unique_cars = df[df$schet!=1,]
-  not_unique_cars <- not_unique_cars %>% mutate_if(is.character,as.factor)
-  not_unique_cars <- not_unique_cars[!is.na(not_unique_cars$Model),]
-  numbs <- not_unique_cars %>% group_by(City,Marka,Model,Year,phone) %>% summarise(SUM_DIF = sum(date_difference))# ZVEZDOCHKA
-  maxs <- not_unique_cars %>% group_by(City,Marka,Model,Year,phone) %>% summarise(data_posl_obyavlenia = max(data_posl_obyavlenia),
-                                                                                  dama = min(data_dobavlenia_v_parser))
-  data <- inner_join(not_unique_cars,maxs)
-  data <- inner_join(data,numbs)
-  data$data_dobavlenia_v_parser <- data$dama
-  data$dama <- NULL
-  data$date_difference <- data$SUM_DIF
-  data$SUM_DIF <- NULL
-  daud <- rbind(unique_cars,data)
-  daud <- daud[daud$date_difference<=quantile(data$date_difference,0.99),]
-  daud$Max_date <- max(daud$data_posl_obyavlenia)
-  daud$data_date <- as.integer(daud$Max_date-daud$data_posl_obyavlenia)
-  #daud <- daud[daud$data_posl_obyavlenia<=daud$Max_date-30,]
-  daud <- daud[!(daud$date_difference==7 & daud$kod_statusa==2),]
-  daud$sale <- ifelse((daud$kod_statusa==4 & daud$data_date>30 ) | (daud$kod_statusa==2 & daud$data_date>30),'yes','no')
-  yes <- daud#[daud$sale=='yes',]
-  q <- yes %>% group_by(date_difference,sale) %>% summarise(n=n())
-  logic3 <- ggplotly(qplot(q$date_difference,q$n,color=q$sale,geom = 'line',xlab = "Без  7 дней + архив"))
-  logic3
-  library(tidyr)
-  q1 <- yes %>% group_by(date_difference,sale) %>% summarise(n=n()) %>% spread(sale,n)
-  q1$sum <- q1$yes+q1$no
-  cor.test(q1$sum,q1$yes)
-  qplot(q1$sum,q1$yes)
-  daud$data_date <- NULL
-  daud$Max_date <- NULL
-  daud$schet <- NULL
-  df <- daud
-  df <- df[df$Year>=1990,]
-  group_1 <- read.csv("dictionaries/group1.csv")
-  df <- inner_join(df,group_1)
-  group_2 <- read.csv("dictionaries/group2.csv")
-  
-  df <- inner_join(df,group_2)
-  df$phone <- NULL
-  df <- unique(df)
-  group_3 <- read.csv("dictionaries/group3.csv")
-  
-  df <- inner_join(df,group_3)
-  df$anomaly_by_price <- ifelse(df$cena>=df$Third_quartile,"too_expensive",
-                                ifelse(df$cena>=df$Third_quantile,"expensive",
-                                       ifelse(df$cena<=df$First_quantile,"too_cheap",
-                                              ifelse(df$cena<=df$Second_quantile,"cheap","normal"))))
-  prop.table(table(df$anomaly_by_price))
-  group_4 <- read.csv("dictionaries/group_4.csv")
-  
-  df <- inner_join(df,group_4)
-  df$anomaly_by_year <- ifelse(df$Year>=df$Fourth_q_year,"too_new",
-                               ifelse(df$Year>=df$Third_q_year,"new",
-                                      ifelse(df$Year<=df$Second_q_year,"old",
-                                             ifelse(df$Year<=df$First_q_year,"too_old","new"))))
-  
-  prop.table(table(df$anomaly_by_year))
-  hist(df$Year)
-  df$Sell_classs <- ifelse(df$sale=='yes',"Продан","Неизвестно")
-  df$sale <- NULL
-  sales_table <- df %>% group_by(Marka,Model,Year) %>% filter(Sell_classs =="Продан") %>% summarise(Prodan = n(),
-                                                                                                    Prodan_days = mean(date_difference),
-                                                                                                    Prodan_3 = quantile(date_difference,0.9),
-                                                                                                    Prodan_1 = quantile(date_difference,0.1),
-                                                                                                    Prodan_cena = mean(cena))
-  sales_table_3 <- df %>% group_by(Marka,Model,Year) %>%  summarise(Count = n(),
-                                                                    days = mean(date_difference),
-                                                                    q3 = quantile(date_difference,0.9),
-                                                                    q1 = quantile(date_difference,0.1),
-                                                                    cena = mean(cena))
-  sales <- left_join(sales_table_3,sales_table)
-  sales <- sales[sales$Count>10,]
-  sales$predictable <- ifelse(sales$Count<=10,"cant predict","can predict")
-  sales$Prodan_days <- as.integer(sales$Prodan_days)
-  sales$Sales_days_group <- ifelse(sales$Prodan_days<10,"less than 10 days",
-                                   ifelse(sales$Prodan_days<20,"less than 20 days",
-                                          ifelse(sales$Prodan_days<30,"less than 30 days","more than 30 days")))
-  sales_to_train <- select(sales,-c(Count,days,q3,q1,cena,Prodan))
-  train <- select(df,c(Marka,Model,Year,Tip_kuzova,KPP,privod,raspolozhenie_rulya,cvet,cena,volume,dvigatel,City,
-                       Mean,Third_quartile,First_quantile,difficulty_classificator,anomaly_by_price,anomaly_by_year,
-                       year_mean,First_q_year,Second_q_year,Marka_model_n,Marka_n,id_car_in_kolesa))
-  train <- train %>% mutate_if(is.character,as.factor)
-  train$privod <- ifelse(is.na(train$privod),"NAN",train$privod)
-  sapply(train,function(x){sum(is.na(x))})
-  train$cvet <- ifelse(is.na(as.character(train$cvet)),"NAN_color",as.character(train$cvet))
-  train <- na.omit(train)
-  train <- train %>% mutate_if(is.character,as.factor)
-  options(scipen = 999)
-  testr <- read.csv("dictionaries/group5.csv")
-  
-  train <- inner_join(train,testr)
-  train <- train[train$cena<20000000,]
-  train <- train[train$cena>900000,]
-  train <- unique(train)
-  train <- train[train$Year>=1990,]
-  train <- train %>% mutate_if(is.character,as.factor)
-  write.csv(select(train,id_car_in_kolesa),"mini_id_checker.csv",row.names = F)
-  train <- inner_join(train,sales_to_train)
-  train <- na.omit(train)
-  checkers <- select(df,c(id_car_in_kolesa,date_difference,views,kod_statusa))
-  train$City <- NULL
-  fwrite(checkers,"checkers.csv",row.names = F)
-  write.csv(train,"TRAIN.CSV",row.names = F)
-  
-  
-  additional_data <- df %>% 
-    group_by(Marka,Model,Year,KPP,Tip_kuzova,raspolozhenie_rulya,volume,dvigatel) %>% 
-    summarise(Count = n())
-  
-  
-  additional_data1 <- df %>% filter(Sell_classs=="Продан") %>% 
-    group_by(Marka,Model,Year,KPP,Tip_kuzova,raspolozhenie_rulya,volume,dvigatel) %>% 
-    summarise(Sales = n()) 
-  str(df)
-  df <- df %>% mutate_if(is.character,as.factor)
-  write.csv(df,"df.csv",row.names = F)
-  
-  
-  library(data.table)
-  library(dplyr)
-  library(data.table)
-  library(randomForest)
-  library(rpart)
-  library(plotly)
-  library(readr)
-  library(readxl)
-  library(xgboost)
-  library(Matrix)
-  library(caret)
-  library(splitstackshape)
-  library(stringr)
-  library(lubridate)
-  
-  df <- fread("TRAIN.CSV",stringsAsFactors = T)
-  
-  qplot(df$Prodan_3)
-  table(df$City)
-  train <- df
-  IDs <- select(train,id_car_in_kolesa)
-  train$id_car_in_kolesa <- NULL
-  dtrain <- data.matrix(select(train,-c(cena)))
-  dtrain <- xgb.DMatrix(data=dtrain,label=train$cena)
-  bst <- xgb.load("xgb.model")
-  train$prognoz <- predict(bst,dtrain)
-  train$error <- (train$cena-train$prognoz)/(train$cena+train$prognoz)
-  train$diff <- train$cena - train$prognoz
-  train$prognoz <- abs(train$prognoz)
-  summary(train$error)
-  train <- df
-  IDs <- select(train,id_car_in_kolesa)
-  train$id_car_in_kolesa <- NULL
-  index <- createDataPartition(train$cena,p=0.7,list = F)
-  tr <- train[index,-c(24:27)]
-  ts <- train[-index,-c(24:27)]
-  params <- list(booster = "gbtree", objective = "multi:softprob", num_class = 4, eval_metric = "mlogloss")
-  classification_error <- function(conf_mat) {
-    # Сделал модель, которая прогнозирует за сколько дней продастся автомобиль  
-    
-    
-    conf_mat = as.matrix(conf_mat)
-    
-    error = 1 - sum(diag(conf_mat)) / sum(conf_mat)
-    
-    return (error)
-  }
-  damn <- as.data.frame(train)[,colnames(tr)]
-  ctest_damn <- data.matrix(select(damn,-c(Sales_days_group)))
-  val_labs_damn <- as.numeric(damn$Sales_days_group) - 1
-  ctest <- xgb.DMatrix(data=ctest_damn,label=val_labs_damn)
-  xgb_model <- xgb.load("xgb_liklik.model")
-  xgb_val_preds <- predict(xgb_model, newdata = ctest)
-  xgb_val_out <- matrix(xgb_val_preds, nrow = 4, ncol = length(xgb_val_preds) / 4) %>% 
-    t() %>%
-    data.frame() %>%
-    mutate(max = max.col(., ties.method = "last"), label = val_labs_damn + 1) 
-  xgb_val_conf <- table(true = val_labs_damn + 1, pred = xgb_val_out$max)
-  xgb_val_conf2 <- confusionMatrix(factor(xgb_val_out$label),
-                                   factor(xgb_val_out$max),
-                                   mode = "everything")
-  
-  train$Sales_days_group_pred <- xgb_val_out$max
-  train$Sales_days_group_int <- xgb_val_out$label
-  train$prognoz <- predict(bst,dtrain)
-  train$error <- (train$cena-train$prognoz)/(train$cena+train$prognoz)
-  train$diff <- train$cena - train$prognoz
-  train$prognoz <- abs(train$prognoz)
-  
-  checkers <- fread("checkers.csv")
-  train$id_car_in_kolesa <- IDs$id_car_in_kolesa
-  train <- inner_join(train,checkers)
-  train$flag1 <-  ifelse(train$prognoz<train$cena,"predicted less than fact","predicted is greater")
-  
-  mean_views <- train %>% group_by(Marka,Model,Year) %>% summarise(mean_date_difference = mean(date_difference),
-                                                                   count = n())
-  train <- inner_join(train,mean_views)
-  train$flag2 <- ifelse(train$mean_date_difference<=train$date_difference,"passive","active")
-  train$Recommended_buying_price <- ifelse(train$prognoz<=1000000,train$prognoz - 0.18*train$prognoz,
-                                           ifelse(train$prognoz<=2500000,train$prognoz - 0.15*train$prognoz,
-                                                  ifelse(train$prognoz<=4500000,train$prognoz - 0.12*train$prognoz,
-                                                         ifelse(train$prognoz<=6000000,train$prognoz - 0.12*train$prognoz,
-                                                                ifelse(train$prognoz<=8000000,train$prognoz - 0.1*train$prognoz,
-                                                                       ifelse(train$prognoz<=10000000,train$prognoz - 0.1*train$prognoz,
-                                                                              ifelse(train$prognoz<=15000000,train$prognoz - 0.1*train$prognoz,
-                                                                                     ifelse(train$prognoz>15000000,train$prognoz - 0.8*train$prognoz,"NAN"))))))))
-  
-  train$Max_buying_price <- ifelse(train$prognoz<=1000000,train$prognoz - 120000,
-                                   ifelse(train$prognoz<=2500000,train$prognoz - 200000,
-                                          ifelse(train$prognoz<=4500000,train$prognoz - 350000,
-                                                 ifelse(train$prognoz<=6000000,train$prognoz - 450000,
-                                                        ifelse(train$prognoz<=8000000,train$prognoz - 550000,
-                                                               ifelse(train$prognoz<=10000000,train$prognoz - 650000,
-                                                                      ifelse(train$prognoz<=15000000,train$prognoz - 900000,
-                                                                             ifelse(train$prognoz>15000000,train$prognoz - 1200000,"NAN"))))))))
-  
-  fwrite(train,"PREDICTED_VALUES.csv",row.names = F)
-  
-  
-  
-  
-  
-  
-  
-  
-  df <- fread("df.csv")
-  Final <- fread("PREDICTED_VALUES.csv",stringsAsFactors = T)
+  fwrite(train,"BIG/PREDICTED_VALUES.csv",row.names = F)
+  df <- fread("BIG/df.csv")
+  Final <- fread("BIG/PREDICTED_VALUES.csv",stringsAsFactors = T)
   TOTAL_LIQUIDITY_DATAMART <- Final %>% group_by(Marka,Model,Year) %>% 
     summarise(Mean_price = mean(cena),
               Count = n(),
@@ -1272,27 +617,10 @@ tobi <- function(x){
   tocka <- tochka[tochka$Tip_kuzova!=c("лимузин"),]
   tocka <- tocka[tochka$Tip_kuzova!=c("микроавтобус"),]
   tocka <- tocka[tochka$Tip_kuzova!=c("фургон"),]
-  write.csv(tocka,"BI_complete.csv",row.names = F)
+  write.csv(tocka,"BIG/BI_complete.csv",row.names = F)
   
-  #qplot(tocka$Liquidity)
-  
-  
-  library(data.table)
-  library(dplyr)
-  library(data.table)
-  library(randomForest)
-  library(rpart)
-  library(plotly)
-  library(readr)
-  library(readxl)
-  library(xgboost)
-  library(Matrix)
-  library(caret)
-  library(splitstackshape)
-  library(stringr)
-  library(lubridate)
-  df <- fread("df.csv")
-  Final <- fread("PREDICTED_VALUES.csv",stringsAsFactors = T)
+  df <- fread("BIG/df.csv")
+  Final <- fread("BIG/PREDICTED_VALUES.csv",stringsAsFactors = T)
   TOTAL_LIQUIDITY_DATAMART <- Final %>% group_by(Marka,Model,Year,Tip_kuzova,KPP,raspolozhenie_rulya,volume,dvigatel,cvet) %>% 
     summarise(Mean_price = mean(cena),
               Count = n(),
@@ -1541,10 +869,10 @@ tobi <- function(x){
   Diinislam4 <- inner_join(Diinislam4,Diinislam2)
   Diinislam1 <- inner_join(Diinislam1,Diinislam4)
   Diinislam1$NEW_Liq <- Diinislam1$TOTAL_LIQ+Diinislam1$COEF_MMY+Diinislam1$COEF_MM+Diinislam1$COEF_M
-  write.csv(Diinislam1,"liquidity.csv",row.names = F)
-  write.csv(Diinislam2,"liquidity1.csv",row.names = F)
-  write.csv(Diinislam3,"liquidity2.csv",row.names = F)
-  write.csv(Diinislam4,"liquidity3.csv",row.names = F)
+  write.csv(Diinislam1,"BIG/liquidity.csv",row.names = F)
+  write.csv(Diinislam2,"BIG/liquidity1.csv",row.names = F)
+  write.csv(Diinislam3,"BIG/liquidity2.csv",row.names = F)
+  write.csv(Diinislam4,"BIG/liquidity3.csv",row.names = F)
   Finka <- inner_join(Final,Diinislam1)
   colnames(Finka)
   Finka$views <- NULL
@@ -1577,17 +905,12 @@ tobi <- function(x){
   
   
   
-  library(dplyr)
-  library(data.table)
-  library(ggplot2)
-  library(plotly)
-  library(xgboost)
-  library(lubridate)
-  library(readxl)
-  Final <- fread("PREDICTED_VALUES.csv",stringsAsFactors = T)
-  BI <- fread("BI_complete.csv",stringsAsFactors = T)
-  df <- fread("df.csv",stringsAsFactors = T)
+  Final <- fread("BIG/PREDICTED_VALUES.csv",stringsAsFactors = T)
+  BI <- fread("BIG/BI_complete.csv",stringsAsFactors = T)
+  df <- fread("BIG/df.csv",stringsAsFactors = T)
   reliz <- inner_join(Final,BI)
+  gc()
+  
   colnames(reliz)
   reliz$year_mean <- NULL
   reliz$First_q_year <- NULL
@@ -1609,7 +932,7 @@ tobi <- function(x){
   data <- data[data$error>-0.3,]
   data <- data[data$error<0.3,]
   length(unique(data$id_car_in_kolesa)) # adverts
-  Lik  <- read.csv("liquidity.csv")
+  Lik  <- read.csv("BIG/liquidity.csv")
   Marka <- unique(Lik[,c(1,23)])
   Marka_model <- unique(Lik[,c(1,2,22)])
   Marka_model_YEAR <- unique(Lik[,c(1,2,3,21)])
@@ -1633,84 +956,8 @@ tobi <- function(x){
   t <- data %>% group_by(Marka,Model) %>% summarise(Lik = mean(Liquidity),
                                                     Scor = mean(SCORING))
   
-  qplot(data$Liquidity)
   
-  write.csv(data,"BI_SCORING.csv",row.names = F)
-  colnames(data)
-  qplot(data$date_difference,data$Liquidity,color=data$Count_type)
-  colnames(data)
+  write.csv(data,"BIG/BI_SCORING.csv",row.names = F)
   
-  data$Marka_model_n <- NULL
-  data$Marka_n <- NULL
-  data$Prodan_days <- NULL
-  data$Prodan_1 <- NULL
-  data$Prodan_3 <- NULL
-  data$N <- NULL
-  data$Sales_days_group_int <- NULL
-  data$Sales_days_group_pred <- NULL
-  data$count <- NULL
-  
-  
-  table(data$Count_type)
-  table(data$CLASS)
-  
-  good_more10b <- data[data$Count_type=="good" & data$CLASS=="more than 10m",]
-  good_less10b <- data[data$Count_type=="good" & data$CLASS=="less than 10m",]
-  good_less5b <- data[data$Count_type=="good" & data$CLASS=="less than 5m",]
-  good_more2b <- data[data$Count_type=="good" & data$CLASS=="less than 2m",]
-  
-  med_more10b <- data[data$Count_type=="medium" & data$CLASS=="more than 10m",]
-  med_less10b <- data[data$Count_type=="medium" & data$CLASS=="less than 10m",]
-  med_less5b <- data[data$Count_type=="medium" & data$CLASS=="less than 5m",]
-  med_more2b <- data[data$Count_type=="medium" & data$CLASS=="less than 2m",]
-  
-  bad_more10b <- data[data$Count_type=="bad" & data$CLASS=="more than 10m",]
-  bad_less10b <- data[data$Count_type=="bad" & data$CLASS=="less than 10m",]
-  bad_less5b <- data[data$Count_type=="bad" & data$CLASS=="less than 5m",]
-  bad_more2b <- data[data$Count_type=="bad" & data$CLASS=="less than 2m",]
-  
-  write.csv(data,"dinislam.csv",row.names = F)
-  
-  BIBI <- fread("BI_SCORING.csv")
-  BIBI$date_difference
-  attach(BIBI)
-  
-  aes <- BIBI %>% group_by(Marka,
-                           Model,
-                           Year,
-                           Tip_kuzova,
-                           KPP,
-                           privod,
-                           raspolozhenie_rulya,
-                           cvet,
-                           volume,
-                           dvigatel,
-                           Count_type) %>% summarise(mean_date_difference = mean(date_difference),
-                                                     mean_sell_days = mean(Prodan_days),
-                                                     mean_liq1 = mean(Liquidity))
-  qplot(aes$mean_date_difference,aes$mean_liq1)
-  gc()
-  gc(reset=T)
-  table(BIBI$Count_type)
-  table(BIBI$CLASS)
-  BIBI1 <- BIBI[BIBI$Count_type=='good',]
-  cor.test(BIBI1$date_difference,BIBI1$LIQ_MINI_2)
-  qplot(BIBI1$LIQ_MINI_2)
-  
-  BIBI1
-  summary(BIBI$Liquidity)
-  boxplot(BIBI$Liquidity)
-  
-  BMW <- data[data$Marka=="BMW",]
-  table(BMW$Model)
-  BMW <- BMW[BMW$Model=="328",]
-  BMW <- BMW[BMW$Year==2012,]
-  d <- df[df$id_car_in_kolesa=='96472269',]
-  
-  quantile(df$error,0.1)
-  quantile(df$error,0.9)
-  summary(df$error)
-  df <- fread("PREDICTED_VALUES.csv")
-  summary(df$error)
-
+  return(data)
 }

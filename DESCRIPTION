@@ -11,5 +11,3 @@ Encoding: UTF-8
 LazyData: true
 Depends: data.table
 Imports: data.table
-Suggests: 
-    testthat
