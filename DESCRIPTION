@@ -10,4 +10,7 @@ License: What license is it under?
 Encoding: UTF-8
 LazyData: true
 Imports: data.table,dplyr,data.table,randomForest,rpart,readr,readxl,xgboost,Matrix,caret,splitstackshape,stringr,lubridate
+<<<<<<< HEAD
 RoxygenNote: 6.1.1
+=======
+>>>>>>> 02c732598459ef191c6c258223a286cc439d548a
