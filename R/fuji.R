@@ -11,10 +11,12 @@
 #' @export fuji
 
 #' @import data.table,dplyr,data.table,randomForest,rpart,plotly,readr,readxl,xgboost,Matrix,caret,splitstackshape,stringr,lubridate
+#' @import data.table
 
 fuji <- function(df){
   
-  
+  library(devtools)
+  document()
   df <- df[is.na(df$avtosalon),]
   df <- df[is.na(df$new_avaria_nahodu),]
   df <- df[df$rastamozhen!="Нет",]

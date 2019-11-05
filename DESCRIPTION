@@ -10,4 +10,4 @@ License: What license is it under?
 Encoding: UTF-8
 LazyData: true
 Imports: data.table,dplyr,data.table,randomForest,rpart,readr,readxl,xgboost,Matrix,caret,splitstackshape,stringr,lubridate
-
+RoxygenNote: 6.1.1
