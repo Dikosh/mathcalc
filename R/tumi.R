@@ -433,7 +433,7 @@ tumi <- function(x){
                                                                 ifelse(train$prognoz<=8000000,train$prognoz - 0.1*train$prognoz,
                                                                        ifelse(train$prognoz<=10000000,train$prognoz - 0.1*train$prognoz,
                                                                               ifelse(train$prognoz<=15000000,train$prognoz - 0.1*train$prognoz,
-                                                                                     ifelse(train$prognoz>15000000,train$prognoz - 0.8*train$prognoz,"NAN"))))))))
+                                                                                     ifelse(train$prognoz>15000000,train$prognoz - 0.08*train$prognoz,"NAN"))))))))
   
   train$Max_buying_price <- ifelse(train$prognoz<=1000000,train$prognoz - 120000,
                                    ifelse(train$prognoz<=2500000,train$prognoz - 200000,
