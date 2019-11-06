@@ -943,7 +943,6 @@ tumi <- function(x){
                                                    ifelse(data$error<-0.1,5,
                                                           ifelse(data$error<=0,2,"NAN"))))))
   table(data$ADVERT_ORDER)
-  erorka <- unique(data[,c(9,28,49,50)])
   table((data$Sales_days_group_pred*-6)+15)
   data$Sales_days_group_pred <- (data$Sales_days_group_pred*-6)+15
   data$PREDICTABLE <- ifelse(data$predictable=='can predict',10,-10)
