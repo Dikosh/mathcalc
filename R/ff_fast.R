@@ -222,7 +222,7 @@ ff_fast <- function(df){
   
   Ids_test <- IDs[-index,]
   ts$id_car_in_kolesa <- Ids_test
-  checkers <- fread("checkers.csv")
+  checkers <- fread("BIG/checkers.csv")
   tsss <- inner_join(ts,checkers)
   tsss$flag1 <-  ifelse(tsss$prognoz<tsss$cena,"predicted less than fact","predicted is greater")
   mean_views <- tsss %>% group_by(Marka,Model,Year) %>% summarise(mean_date_difference = mean(date_difference),
