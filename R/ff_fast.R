@@ -82,12 +82,12 @@ ff_fast <- function(df){
   df <- df[df$cena<30000000,]
   df <- df[df$cena>cena_min,]
   group_1 <- df %>% group_by(Marka) %>% summarise(Marka_n=n()) %>% arrange(-Marka_n)
-  group_1 <- group_1[1:round(nrow(group_1)*0.6),]
+  group_1 <- group_1[1:round(nrow(group_1)*0.5),]
   write.csv(group_1,"dictionaries/group1.csv",row.names = F)
   group_1 <- read.csv("dictionaries/group1.csv")
   df <- inner_join(df,group_1)
   group_2 <- df %>% group_by(Marka,Model) %>% summarise(Marka_model_n=n()) %>% arrange(-Marka_model_n)
-  group_2 <- group_2[group_2$Marka_model_n>=15,]
+  group_2 <- group_2[group_2$Marka_model_n>=20,]
   write.csv(group_2,"dictionaries/group2.csv",row.names = F)
   df <- inner_join(df,group_2)
   df$phone <- NULL
@@ -99,7 +99,7 @@ ff_fast <- function(df){
                                                              First_quantile = quantile(cena,0.05),
                                                              Second_quantile = quantile(cena,0.2),
                                                              Third_quantile = quantile(cena,0.8))
-  group_3$difficulty_classificator <- ifelse(group_3$Count<=3,"Impossible_fit","Fittable")
+  group_3$difficulty_classificator <- ifelse(group_3$Count<=8,"Impossible_fit","Fittable")
   write.csv(group_3,"dictionaries/group3.csv",row.names = F)
   df <- inner_join(df,group_3)
   df$anomaly_by_price <- ifelse(df$cena>=df$Third_quartile,"too_expensive",
@@ -134,7 +134,7 @@ ff_fast <- function(df){
                                                                     q1 = quantile(date_difference,0.1),
                                                                     cena = mean(cena))
   sales <- left_join(sales_table_3,sales_table)
-  sales <- sales[sales$Count>10,]
+  sales <- sales[sales$Count>13,]
   sales$predictable <- ifelse(sales$Count<=10,"cant predict","can predict")
   sales$Prodan_days <- as.integer(sales$Prodan_days)
   sales$Sales_days_group <- ifelse(sales$Prodan_days<10,"less than 10 days",
